@@ -1,0 +1,40 @@
+Nume: Datcu Andrei Daniel
+Grupa: 331CC
+
+In calculul valorii am utilizat doua tipuri de threaduri:
+
+CommThread - Thread de comunicare cu celelalte noduri
+MasterThread - Threadul principal in care se realizeaza calculul
+
+Ambele threaduri sunt implementate in modulul node_threads.py
+
+Despre comunicare si CommThread:
+
+Comunicarea intre noduri se va realiza folosind metodele
+get si set ale clasei Node. Aceste metode for genera un Job, il vor
+adauga in coada de joburi si vor ridica semaforul de control al threadurilor
+de comunicare. Toate threadurile CommThread sunt controlate prin intermediul unui
+singur semafor. Daca algoritmul inca este in desfasurare (ie. nu a fost apelata
+metoda shutdown atunci valorea semaforului va fi intotdeauna egala cu numarul de
+joburi din coada). Daca threadurile de comunicare trebuiesc terminate se va seta
+membrul terminated=true si se va semnaliza folosind din nou acelasi semafor.
+Setarea unei valori in datastore va fi NEBLOCANTA deoarece se va face doar
+de propriul MasterThread al unui nod. Pentru consistenta la sfarsitul unui pas
+al algoritmului se verifica daca toate joburile de scriere s-au terminat. Daca nu,
+se foloseste eventul asociat ultimului job de scriere si astfel se asteapta terminarea
+tuturor acestor joburi.
+
+Un nod va deschide max_pending_requests CommThreaduri o data cu setarea
+datastorului, incadrandu-ma astfel in cerintele bonusului
+
+
+Despre calculul propriu-zis si MasterThraead:
+
+Threadul master al fiecarui nod va executa prima parte a algoritmului in
+n pasi, facand 0 sub pivot si interschimband node_id-urile in cazul in care
+pivotul ar fi 0.
+
+In partea a 2-a, se asteapta rezultatele (x-urile) nodurilor cu id-ul mai mare
+decat nodul curent. O data obtinute, se poate calcula x-ul propriu.
+Terminarea calcului propriu-zis se semnalizeaza intre noduri folosind eventul
+resultsAvailable.

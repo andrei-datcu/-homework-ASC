@@ -1,0 +1,84 @@
+Nume: Datcu Andrei Datcu
+Grupa: 331CC
+Tema 4 ASC
+
+Continut arhiva:
+
+├── 2Dconvolution.cu         ......    Implementarea celor 2 kerneluri device pentru convolutie
+├── 2Dconvolution_gold.cpp   ......    Nu-mi apartine - CPU computing
+├── 2Dconvolution.h          ......    Structura Matrix
+├── graphs                   ......    Directorul cu cele doua grafuri deja generate
+│   ├── cpuvsgpu.png
+│   └── globalvsshared.png
+├── Makefile                 ......    Makefile cu targeturi - build, run, plot, clean
+├── README                   ......    Acest fisier
+├── run_tests.sh             ......    Scriptul care ruleaza executabilul cu argumente da la 1 la 20
+└── tests                    ......    Fisierele cu dimensiunile testelor
+
+
+================================================================================
+
+Modificari aduse scheletului:
+
+    - in clasa Matrix am adaugat o metoda sizeInBytes si am supraincarcat operatorul [] pentru a putea face
+        Matrix A;
+        A[row][col] = 5;
+
+    - in run_tests.sh am adaugat ca argument in linia de comanda numele executabilului
+    - Masurarea timpului calculului pe CPU si afisarea acestuia
+    - Toti timpii sunt afisati acum la stderr, pentru a-i putea separa de corectitudinea testelor
+
+================================================================================
+
+Implementarea efectiva:
+
+    Generalitati: Dimensiunea blocului am pastrat-o 16 (Vezi explicatii punctul b) pentru aceasta decizie).
+        Dimensiunea gridului o calculez in functie de dimensiunea imaginii si de cea a blocului
+
+    a) Cu memorie globala
+        Fiecare thread se va ocupa de cate un pixel din imaginea finala. Toate valorile sunt citite din
+        memoria globala. Daca un pixel iese din imagine atunci se considera ca are valorea 0 (simulez bordarea)
+
+    b) Cu memorie shared
+
+        Pentru un bloc tin minte in memoria shared urmatoarele:
+            Kernelul de convolutie
+            O submatirce a matricei N care are pe margini inca BLOCK_SIZE / 2 randuri/coloane (sus, jos / stanga dreapta)'
+            Aceste valori extra fie sunt de pe matrice fie sunt 0 (bordare).
+
+        Un thread dintr-un bloc va transfera:
+            - un pixel din imaginea originala in subimagine (mapare 1:1)
+            - daca este de pe margine va transfera inca unul in plus (sau il va seta 0). Daca nu sunt suficienti de multi pe margine
+                un singur thread va copia BLOCK_SIZE / 2 pixeli. Daca sunt suficienti atunci primii BLOCK_SIZE/2 respectiv ultimiii
+                BLOCK_SIZE / 2 vor copia cate unul in afara de pixelul prorpiu (Valabil atat pentru linii cat si pentru coloane)
+
+            - daca este in coltul blocului va transfera / borda colturile
+            - daca are indicii intre KERNEL_SIZE / 2 .. KERNEL_SIZE + KERNEL_SIZE / 2 atunci va transfera si un pixel din Kernelul de convolutie
+
+        Deoarece transferurile scaleaza cat de cat (in medie fiecare thread transfera 2 pixeli , mai putin cele din colturi) daca am mari dimensiunea
+        blocului nu s-ar obtine imbunatatiri in ceea ce priveste performanta. Am testat cu 16 32 64.
+
+===============================================================================
+
+Graficele si analiza performantei:
+
+    Pentru a genera graficele din Makefile:
+        make run - fiind logat pe cuda
+        make plot - fiind logat undeva unde exista gnuplot (nu pe cuda)
+
+    Se vor genera 2 grafice (se gasesc si pregenerate in directorul graphs)
+
+        globalvsshared.png - Comparatie intre cele 2 variante pe GPU
+        cpuvsgpu.png - Comparatie intre CPU si cele 2 variante pe GPU (deoarece timpii difera foarte mult, nu se vor vedea exact diferentele intre shared memory
+            si global memory pe acest grafic)
+
+    Analiza performantei:
+        In primul rand, se observa ca cele mai slabe rezultate pe CPU sunt ~100 de ori mai lente decat cele mai slabe pe GPU. Totodata durata calculului pe CPU
+            depinde mult mai mult de dimensiunea matricei decat depinde calculul pe GPU (panta dreptei albastre e aproape 1, la cele GPU e ~0
+
+        Diferentele intre cele doua variante pe GPU se observa mai ales la dimensiuni mari. Acest lucru este logic, deoarece cu cat este mai mare imaginea
+        cu atat ar dura mai mult accesul la toate datele pe memoria globala, iar pe memoria shared accesul "in paralel" se cunoaste mult mai mult
+
+
+
+

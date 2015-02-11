@@ -1,0 +1,109 @@
+Nume: Datcu Andrei
+Grupa: 331CC
+Tema 3 ASC
+
+
+Continut arhiva:
+
+
+── Makefile         --- Makefile-ul principal -> ruland make aici se va genera executabilul tema3
+├── ppu
+│   ├── btc.c       --- Fisierul cu rutine pentru scrierea fisierelor .btc
+│   ├── io.h        --- headere care expun functiile de scriere in fisiere (btc si pgm)
+│   ├── io_utils.c  --- functii ajutatoare pentru operatii cu fisiere (folosite doar in btc.c si pgm.c)
+│   ├── Makefile    --- Makefileul pentru programul ppu
+│   ├── pgm.c       --- Functii pentru citirea fisierelor .pgm
+│   └── tema3_ppu.c --- Codul principal ppu -- aici se comunica cu spu-urile si se scriu datele finale
+├── README          --- Acest fisier
+├── spu
+│   ├── Makefile    --- Makefile-ul pentru programul spu
+│   └── tema3_spu.c --- Codul ce ruleaza pe SPU. Transfer + comprimare/decomprimare
+└── utils
+    └── utils.h     --- headere cu structurile pentru imagini, si definitii constante (folosite si de SPU-uri si de PPU-uri)
+
+===========================================================================================================================
+
+Rezultate test pentru imaginea /export/asc/btc_input/in3.pgm
+
+                |Timp comprimare-decomprimare / Timp total ( secunde)
+-------------------------------------------------------------------------
+NUMAR SPU-uri   |      1      |      2      |      4      |      8      |
+-------------------------------------------------------------------------
+Single Buffering|  0.37/0.98  |  0.19/0.94  |  0.09/0.76  |  0.07/0.63  |
+-------------------------------------------------------------------------
+Double Buffering|  0.32/0.87  |  0.16/0.78  |  0.08/0.69  |  0.04/0.63  |
+-------------------------------------------------------------------------
+
+Observatii:
+
+   * Codul scaleaza foarte bine (a se vedea timpii de la Double Buffering)
+   * Double buffering imbunateste timpul, considerabil chiar la 8 SPU-uri
+   * Corectudine : 0.00 % diferente considerabile intre btc-uri/pgm-uri. Cea mai mare diferenta la PGM: 1 pixel!
+
+
+==========================================================================================================================
+
+Limitari:
+
+  * Cu testele din /export functioneaza perfect
+  * Pentru teste mai mari (latime > 8192 pixeli) latimea ar trebui sa fie multiplu de 32 (vezi mai jos!)
+
+==========================================================================================================================
+
+Implementare:
+
+	a) Reprezentarea datelor:
+		Pixelii sunt reprezentati ca in codul serial(pe 2 octeti). La blocurile de imagine comprimata
+		nu se mai foloseste un char pentru un bit ci un char pentru 8 biti!
+	b) Citire / Scriere fisier PGM
+		Codul din pgm.c / btc.c este bazat pe cel serial. Acesta insa la citirea unui fiser PGM calculeaza
+		un factor de divizune a imaginii in functie de latime acesteia: w > 4096 => div_factor = 2;
+		w > 8192 => div_factor = 4; In functie de acest factor imaginea este impartita si jumatatile
+		sau sferturile vor fi facute stiva (se va micsora astfel latimea imaginii, si se vor putea transmite date
+		mai usor aflate in locatii consecutive din memorie. De exemplu, daca pentru o imagine div_factor este 2 atunci:
+
+		+-----+-----+                          +-----+
+                |     |     |                          |     |
+                | S1  |  S2 |  Se va transforma in     | S1  |
+                |     |     |                          |     |
+                +-----+-----+                          +---- +
+		                                       |     |
+						       | S2  |
+                                                       |     |
+                                                       +-----+
+
+                Operatia inversa se va realiza la scrierea fisierlor pgm/btc
+
+        c) Pararelizarea si Transferul datelor pe SPU
+                La o "bufferare" SPU-ul va citi BLOCK_SIZE (8) linii intregi din imagine. Pe care le va procesa. La imagini
+                late (in2 si in3) totul se va realiza in mai multe transferuri DMA de 16kb (Si toate datele vor incapea
+                datorita segmentarii realizate in procesul de citire (Vezi punctul b)
+
+        d) Calcul efectiv pe SPU
+                1) Comprimare
+                       Initial, se calculeaza pe cate o coloana suma pixelilor (pix_sum) si suma pixelilor^2 (pix_sq_sum)
+                       Pentru pix_sum este nevoie de un vector (8 shorturi) pentru un bloc. Pentru pix_sq_sum este nevoie
+                       de 2 vectori signed int (8 inturi) suma de patrate poate fi maxim 255^255 * 8. Dupa aceea cele 8
+                       sume din fiecare vector se vor agrega in sume finale (cate una pentru fiecare bloc). De ce ne trebuie
+                       suma patrateleor? stdev = sum (( pix-mean)^2) si
+                        (pix - mean) ^ 2 = pix^2 - 2 * mean*pix + pix. Dand mean factor comun observam ca deviatia depinde
+                        doar de suma si de suma patratelor.
+
+                       O data ce stim mean si stdev vom calcula masca de biti. Fiecare linie de 8 va fi comparata cu mean
+                       direct folosind spu_cmpgt. Aceasta va genera tot un vector (8 shorturi). Din aceste 8 shorturi
+                       raman cu 8 biti folosind spu_gather. Acesti 8 biti reprezinta o masca de biti pentru o linie a blocului
+                       toti cei 8 vectori de short (cmp) le voi pastra pentru a-i folosi la decomprimare
+
+                  2) Decomprimare
+                        Se genereaza linie cu linie cate un vector(8 valori) folosind spu_sel si cmp (generat la comprimare)
+                        Aceste valori se copiaza in bufferul aferent
+===========================================================================================================================
+
+Utilizare:
+	pentru generarea executabilului tema3 in folderul in care se dezarhiveaza se apeleaza:
+		./make
+
+	rularea se va face ca in enunt:
+		./tema3 double_buff num_spus in.pgm out.btc out.pgm
+
+	Dupa rulare la stdout se vor scrie cei doi timpi din enunt (comprimare+decomprimare si timpul total)

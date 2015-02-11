@@ -1,0 +1,69 @@
+Nume: Datcu Andrei Daniel
+Grupa 331CC
+
+Continut tema:
+
+a) Fisiere .c folosite la testare:
+	- blas_dtrmv.c => calculul rezultatului folosind rutinele atlas blas
+	- my_dtrmv.c =? calculul rezultatului folosind functia de mana, neoptimizata
+	- my_dtrmv_optim.c calculul rezultatului folosind functia de mana optimizata
+
+	Fiecare fisier isi genereaza matricea si vectorul aleator, folosind insa acelasi seed (pentru a putea compara
+	rezultatele. Toate testele sunt facute folosind o matrice triunghiular inferioara, asezata row-major si cu
+	numere oarecare pe diagonala principala.
+	Optimizarea de mana implica calculul sumei partiale intr-un registru si memorarea sumei finale in locul corespunzator
+	in vectorul rezultat. Celelalte optimizari sunt realizate din flaguri de compilare care vizeaza:
+		l1 si l2 cache size
+		setul de instructini sse maxim suportat
+		-mtune=opteron si prefetching pentru arhitectura opteron
+
+b) Makefile cu target submit-job si draw-plot
+
+	Apeland make submit-job se vor submite toate joburile, cu posibilitaea verificarii daca fiecare s-a terminat cu bine
+	manual, inainte de submiterea urmatorului job. Ie: Poate rularea cu blas si dimensiunea 20000 nici macar n-a intrat
+	in running pe quad ci a ramas la Eqw (d-aia am si ajuns sa scriu makefileul astfel)
+
+	Apeland make plot-all se vor desena cele trei grafice cate un grafic pentru fiecare arhitectura
+
+	Totodata make plot-all va esua daca rezultatele de pe toate arhitecturile folosind toate modurile (blas optim si neoptim)
+	nu sunt identice (vezi regula make check_results)
+
+c) module_loaders/
+	Un director ce contine scripturi de incarcare a modulelor atlas-blas inainte de linkare. Existenta acestor scripturi
+	este justificata de faptul ca nu pot apela module load ... in Makefile (nici nu am inteles de ce nu pot)
+	
+d) grafice/
+	Directorul unde se gasesc cele trei grafice pre-generate
+
+e) Acest README
+
+======================================================================================================================
+
+ANALIZA REZULTATELOR
+
+	Pentru fiecare arhitectura am rulat de cate trei ori (blas-atlas optim si neoptim) cu urmatoarele dimensiuni:
+		10000 15000 20000 25000 30000 35000 40000
+
+	Dupa cum era de asteptat varianta neoptimizata de mana are timp foarte mari, din mai multe motive:
+		- Se acceseaza o intreaga zona de memorie pentru a se adauga un singur termen intr-o suma partiala +
+			se invalideaza tot acel bloc de memorie
+		- Compilatorul doar ghiceste cat este dimensiunea cacheurilor 
+		- Compilatorul nu genereaza cod care foloseste instructini sse
+
+	Cea mai importanta optimizare, din punct de vedere al timpului este cea a utilizarii unui registru pentru suma
+	partiala si memorarea in vectorul X doar a sumei finale!
+
+
+	Varianta optima se aproprie cel mai mult de echivalentul blas pe arhitectura quad. In opinia mea acest lucru se intampla
+	in primul rand pentru ca acesta este cel mai putin complex procesor dintre cele 3. Celelalte doua de exemplu, au 3 nivele
+	de cache iar gcc nu poate optimiza codul folosindu-se de dimensiunea nivelului 3 al cacheului. De aceea am incercat
+	niste hackuri folosind dimenisiunile l3 in l2 insa nu s-au obtinut performante mult mai bune dpdv al timpului.
+
+	Ordinea procesoarelor de la cel mai rapid la cel mai lent (pentru aceste taskuri, desigur) a fost
+
+	nehalem, quad, opteron
+
+	Desi are cea mai mare frecventa dintre toate Opteronul s-a clasat al doilea. Cred ca Opteronul ar fi fost clar invingator
+	daca am fi rezolvat problema paralel, mai ales ca beneficiaza de cea mai mare viteza a BUSului dintre cele 3 procesoare.
+
+	
